@@ -4,7 +4,7 @@ class DefaultConfig(object):
 
     batch_size = 32
     # 保存的checkpoint路径
-    ckpt_path = './checkpoints/'
+    ckpt_path = './checkpoints/SSD_160epoch.pth'
     # 有vgg预训练参数的模型，见utils/convert_fgg.py
     pretrained_model = 'checkpoints/ssd.pth'
 

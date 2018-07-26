@@ -163,8 +163,8 @@ class PriorBox(object):
         '''Non maximum suppression.
 
         Args:
-          bboxes: (tensor) bounding boxes, sized [N,4].
-          scores: (tensor) bbox scores, sized [N,].
+          bboxes: (tensor) bounding boxes, sized [N,4]. N是检测出来的一张图片中的box的数目
+          scores: (tensor) bbox scores, sized [N,]. 对应的N个box的类别概率
           threshold: (float) overlap threshold.
           mode: (str) 'union' or 'min'.
 
@@ -174,6 +174,7 @@ class PriorBox(object):
         Ref:
           https://github.com/rbgirshick/py-faster-rcnn/blob/master/lib/nms/py_cpu_nms.py
         '''
+        assert bboxes.size(0) == scores.size(0)
         x1 = bboxes[:,0]
         y1 = bboxes[:,1]
         x2 = bboxes[:,2]
@@ -184,16 +185,16 @@ class PriorBox(object):
 
         keep = []
         while order.numel() > 0:
-            i = order[0]
+            i = order[0].item()
             keep.append(i)
 
             if order.numel() == 1:
                 break
 
-            xx1 = x1[order[1:]].clamp(min=x1[i])
-            yy1 = y1[order[1:]].clamp(min=y1[i])
-            xx2 = x2[order[1:]].clamp(max=x2[i])
-            yy2 = y2[order[1:]].clamp(max=y2[i])
+            xx1 = x1[order[1:]].clamp(min=float(x1[i]))
+            yy1 = y1[order[1:]].clamp(min=float(y1[i]))
+            xx2 = x2[order[1:]].clamp(max=float(x2[i]))
+            yy2 = y2[order[1:]].clamp(max=float(y2[i]))
 
             w = (xx2-xx1).clamp(min=0)
             h = (yy2-yy1).clamp(min=0)
@@ -220,19 +221,27 @@ class PriorBox(object):
           boxes: tensor, 预测的有效的位置结果 (num, 4)
           labels: tensor, 预测的类别(num,1)
         进行nms，并将预测的结果重现变为(xmin,ymin,xmax,ymax)格式
+        每次转换结果的是一张图片的
         """
         variances = [0.1, 0.2]
         wh = torch.exp(loc[:,2:]*variances[1]) * self.default_boxes[:,2:]
         cxcy = loc[:,:2] * variances[0] * self.default_boxes[:,2:] + self.default_boxes[:,:2]
         boxes = torch.cat([cxcy-wh/2, cxcy+wh/2], 1)  # [8732,4]
-
+        
+        assert boxes.size() == (8732, 4)
+        assert conf.size() == (8732, 21)
+        
+        # print('in Box conver_result, boxes mean: ', boxes.mean())
         # 得到最大可能的类别，其中也包括了背景
         # 这个labels就是每个default box对应的21个类别中最大的那个的下标，当然也就代表了最大类别
         max_conf, labels = conf.max(1)  # [8732,1]
+        # print('in Bos convert_result, max_conf mean: ', max_conf.mean())
+        # print('in Box convert_result, labels.mean: ', labels.to(torch.float).mean())
         # 去掉背景的类别，得到了长为num,的一维tensor，每个位置的值就是类别，num就是检测数来的obj的个数
-        ids = labels.squeeze(1).nonzero().squeeze(1)  # [#boxes,]
-
+        ids = labels.squeeze().nonzero().squeeze()  # [#boxes,]
+        # print('in Box convert_result, ids size: ', ids.size())
         # 非极大值抑制，选出保留下来的box label
-        keep = self.nms(boxes[ids], max_conf[ids].squeeze(1))
+        keep = self.nms(boxes[ids], max_conf[ids].squeeze())
+        print('in Box convert_result, keep size: ', keep.size())
         # 这里的boxes labels max_conf都是8732维度的，所以先选出之前不是背景的那些，然后再选出nms的结果
         return boxes[ids][keep], labels[ids][keep], max_conf[ids][keep]
